@@ -2,6 +2,10 @@
 
 Main goal is to share skills for LLM agents
 
+# Eclipse integration
+
+- https://github.com/sterlp/eclipse-peon-ai
+
 ## Good repos also to look at
 
 - https://github.com/anthropics/skills
