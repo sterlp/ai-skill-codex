@@ -8,6 +8,8 @@ Main goal is to share skills for LLM agents
 
 ## Good repos also to look at
 
+- https://github.com/mattpocock/skills/blob/main/skills
+- https://github.com/obra/superpowers
 - https://github.com/anthropics/skills
 - https://github.com/Orchestra-Research/AI-Research-SKILLs
 - https://github.com/openai/skills
