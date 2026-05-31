@@ -1,16 +1,32 @@
-Review all changes on this branch using systematic issue tracking:
+Your goal is to create a short, informative `release-notes-<date>.md` for the changes since the last release tag.
 
-0. Run `git status` in base directory - if peon-plan/*.md exists, use it to validate that all planned changes are present and no unplanned changes were introduced
-1. Select next changed file/class to review (prioritize source over tests)
-2. If issue found: create `<project>/issue-xx.md`, write a test that reproduces it — if the test passes (not reproducible), discard it and document as "unconfirmed" in review-progress.md; if the test fails, proceed with fix
-3. Apply fix, verify test now passes, verify full compile, document in `<project>/issue-xx-fix.md`
-4. After each issue-fix cycle completes - update `<project>/review-progress.md` with reviewed files, findings, and remaining scope, then call `compactSession` with summary of progress
-5. Repeat from step 1 until every changed file is reviewed and review-progress.md confirms no remaining scope
-6. Create <project>/summary-commit.md listing all reviewed files, issues found/fixed, unconfirmed issues, and verification status
+1. Run `git fetch --tags` to ensure all remote tags are available locally, then run `git tag --sort=-creatordate | head -10` to find the most recent release tag (format `vX.X.X` or `X.X.X`)
+2. Run `git log <last-tag>..HEAD --oneline` to collect all commit messages since that tag
+3. Run `git diff <last-tag>..HEAD --stat` to get a high-level overview of changed files
+4. Analyze commits and changes — categorize each into: **New Features**, **Breaking Changes**, or **Bug Fixes**; skip merge commits and style-only changes
+5. Write `release-notes-<date>.md` using this structure:
 
-Rules:
-- Fix issues as you find them (don't batch)
-- Use issue numbering starting from highest existing + 1
-- Verify fixes compile after each change
-- Only flag real problems - skip style nitpicks unless critical
-- If you fix issues apply TDD, clean code, SOLID principles and verify if shared code is properly resued in Util or shared classes
+```markdown
+# Release Notes — <date>
+
+## Breaking Changes
+- <short description> (`<affected class/module>`)
+
+## New Features
+- <short description> (`<affected class/module>`)
+
+## Bug Fixes
+- <short description, reference issue-xx.md if present>
+
+## Notes
+- <optional: migration hints, deprecations, known issues>
+```
+
+**Rules:**
+
+- Keep each bullet to one line — concise and factual
+- Omit empty sections entirely
+- Reference `<project>/issue-xx.md` files where relevant
+- Breaking changes first — never bury them
+- If no release tag exists, use the first commit as the baseline
+- Write for the end user — avoid technical jargon, keep it short, precise, and scannable in under 30 seconds
