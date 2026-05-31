@@ -1,4 +1,4 @@
-# Open free AI skillls
+# Open free AI skills
 
 Main goal is to share skills for LLM agents
 
@@ -8,6 +8,7 @@ Main goal is to share skills for LLM agents
 
 ## Good repos also to look at
 
+- https://github.com/LLM-Coding/Semantic-Anchors
 - https://github.com/mattpocock/skills/blob/main/skills
 - https://github.com/obra/superpowers
 - https://github.com/anthropics/skills
