@@ -1,6 +1,6 @@
 # Open free AI skills
 
-Main goal is to share skills for LLM agents
+Main goal is to share skills for eclipse-peon-ai. Means adding skills which adjusted to work best with eclipse and the plugin. Otherwise better use directly the skills from the provided pages.
 
 # Eclipse integration
 
