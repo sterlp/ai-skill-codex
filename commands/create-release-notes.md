@@ -29,4 +29,5 @@ Your goal is to create a short, informative `release-notes-<date>.md` for the ch
 - Reference `<project>/issue-xx.md` files where relevant
 - Breaking changes first — never bury them
 - If no release tag exists, use the first commit as the baseline
+- if a commit contains an issue link try to read it with `fetchAsMarkdown`
 - Write for the end user — avoid technical jargon, keep it short, precise, and scannable in under 30 seconds
