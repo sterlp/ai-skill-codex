@@ -2,6 +2,11 @@
 
 Main goal is to share skills for eclipse-peon-ai. Means adding skills which adjusted to work best with eclipse and the plugin. Otherwise better use directly the skills from the provided pages.
 
+# Usage
+
+1. Go into your home dir e.g. `cd`
+2. `git clone git@github.com:sterlp/ai-skill-codex.git .peon`
+
 # Eclipse integration
 
 - https://github.com/sterlp/eclipse-peon-ai
