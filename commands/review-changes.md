@@ -1,16 +1,16 @@
-Review all changes on this branch using systematic issue tracking:
+# Branch Review Workflow
 
-0. Run `git status` in base directory - if peon-plan/*.md exists, use it to validate that all planned changes are present and no unplanned changes were introduced
-1. Select next changed file/class to review (prioritize source over tests)
-2. If issue found: create `<project>/issue-xx.md`, write a test that reproduces it — if the test passes (not reproducible), discard it and document as "unconfirmed" in review-progress.md; if the test fails, proceed with fix
-3. Apply fix, verify test now passes, verify full compile, document in `<project>/issue-xx-fix.md`
-4. After each issue-fix cycle completes - update `<project>/review-progress.md` with reviewed files, findings, and remaining scope, then call `compactSession` with summary of progress
-5. Repeat from step 1 until every changed file is reviewed and review-progress.md confirms no remaining scope
-6. Create <project>/summary-commit.md listing all reviewed files, issues found/fixed, unconfirmed issues, and verification status
+0. `git status`; if peon-plan/*.md exists, validate planned vs actual changes.
+1. Pick next changed file (source before tests).
+2. Classify before acting:
+   - docs match code -> skip, log "verified-by-docs" in review-progress.md
+   - docs contradict code -> confirmed bug, go to 3 (skip discard-if-passes check)
+   - test exists, docs silent -> docs-bug: extend docs, log in review-progress.md, no issue file
+   - no docs/test/clear intent -> append to open-points.md (file+line), skip, do not guess
+3. Confirmed bug only: create issue-xx.md, write test asserting doc-defined behavior. Passes unexpectedly -> discard, log "unconfirmed". Fails -> go to 4.
+4. Fix, verify test passes, verify full compile, document in issue-xx-fix.md.
+5. Update review-progress.md (reviewed files, findings, remaining scope), compactSession with next target. Loop to 1 until no scope remains.
+6. Write summary-commit.md: files reviewed, issues fixed, docs-bugs fixed, unconfirmed issues, verification status.
+7. Show open-points.md if it exists.
 
-Rules:
-- Fix issues as you find them (don't batch)
-- Use issue numbering starting from highest existing + 1
-- Verify fixes compile after each change
-- Only flag real problems - skip style nitpicks unless critical
-- If you fix issues apply TDD, clean code, SOLID principles and verify if shared code is properly resued in Util or shared classes
+Rules: fix as found, don't batch. Issue numbers = highest existing + 1. Verify compile after every change. Skip style nitpicks unless critical. Apply TDD/SOLID, reuse shared Util code. Docs lead over code when unambiguous; if unsure, defer to open-points.md, never fabricate intent.
