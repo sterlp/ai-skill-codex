@@ -5,7 +5,7 @@ Main goal is to share skills for eclipse-peon-ai. Means adding skills which adju
 # Usage
 
 1. Go into your home dir e.g. `cd`
-2. `git clone git@github.com:sterlp/ai-skill-codex.git .peon`
+2. `git clone https://github.com/sterlp/ai-skill-codex.git .peon`
 
 # Eclipse integration
 
