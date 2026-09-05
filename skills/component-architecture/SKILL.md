@@ -33,7 +33,7 @@ Der Aufruf-Fluss External Facade → Internal Facade → Functions → Repositor
   - [ ] Gehört alles hierher? -> als Function/Component extrahieren
   - [ ] Stimmt das Abstraktionslevel? -> Details in eine Function auslagern
   - [ ] Fremde Orchestrierung hier drin? -> zurück zur zuständigen Internal Facade
-  - [ ] Versteckter, unbenannter Service? -> als eigenen Baustein extrahieren
+  - [ ] Versteckter, unbenannter Service oder Component? -> als eigenen Baustein extrahieren
   ```
   Nur wenn alle vier "Nein" sind, ist eine Überschreitung eine seltene Ausnahme — bei jeder weiteren Änderung neu prüfen.
 
