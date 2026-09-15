@@ -1,6 +1,6 @@
 # Architektur-Regeln: ArchUnit-Konzept & Spring Modulith
 
-Dieses Dokument erklärt **was** geprüft werden soll und **warum**. Für Regel 1–3 gibt es mit Spring Modulith eine einfachere Alternative zu selbst geschriebenen ArchUnit-Tests; Regel 4–6 bleiben eigene ArchUnit-Regeln.
+Dieses Dokument erklärt **was** geprüft werden soll und **warum**. Für Regel 1–3 gibt es mit Spring Modulith eine einfachere Alternative zu selbst geschriebenen ArchUnit-Tests; Regel 4–7 bleiben eigene ArchUnit-Regeln.
 
 ## Wann sich die Einrichtung überhaupt lohnt
 
@@ -40,7 +40,7 @@ class ComponentArchitectureApplicationTests {
 - **`Documenter(...).writeModulesAsPlantUml()`** generiert PlantUML-Diagramme der Komponentenstruktur — das ist wertvoll, **auch wenn `verify()` nicht aktiv/bestehend ist oder bewusst nicht scharf gestellt wird**. Das UML-Diagramm ist ein Dokumentations-Artefakt, in das ein Agent direkt hineinschauen kann, um strukturelle Probleme (unerwartete Pfeile zwischen Komponenten, fehlende Trennung) visuell zu erkennen — reines Rendering ohne Validierung liefert also schon Nutzen für Docs und für die KI-gestützte Architektur-Analyse.
 - Dieser Test läuft einmal auf Anwendungsebene (nicht pro Komponente) und ersetzt die separaten ArchUnit-Regeln 1–2 unten, sobald er im Projekt vorhanden ist.
 
-## ArchUnit-Regeln (falls kein Spring Modulith verwendet wird, oder für Regel 4–6 ergänzend)
+## ArchUnit-Regeln (falls kein Spring Modulith verwendet wird, oder für Regel 4–7 ergänzend)
 
 ArchUnit ist eine Java-Bibliothek, die Architektur-Constraints als JUnit-Tests ausführt: sie liest den kompilierten Bytecode ein und prüft Paket-/Klassen-/Methoden-Beziehungen gegen deklarativ formulierte Regeln [web:19][web:32].
 
@@ -60,11 +60,11 @@ ArchUnit ist eine Java-Bibliothek, die Architektur-Constraints als JUnit-Tests a
 
 ### Regel 3 — Namenskonvention passt zum Package
 
-Prüft, dass z. B. jede Klasse mit Suffix `*Repository`/`*DAO` auch tatsächlich im Package `..repository..` liegt, und umgekehrt kein `*Controller` im `service`-Package landet [web:26]. Damit wird die Tabelle aus `references/naming-conventions.md` nicht nur Dokumentation, sondern Build-Regel.
+Prüft, dass z. B. jede Klasse mit Suffix `*Repository` auch tatsächlich im Package `..repository..` liegt, und umgekehrt kein `*Resource` im `..service..`-Package landet [web:26]. Damit wird die Tabelle aus `references/naming-conventions.md` nicht nur Dokumentation, sondern Build-Regel. Nutzt ein Projekt eigene (z. B. Legacy-JEE-)Namen, wird die Regel auf dessen Mapping aus `naming-conventions.md` gezogen.
 
 ### Regel 4 — `@Transactional` nur an der Internal Facade
 
-Prüft, dass die `@Transactional`-Annotation ausschließlich auf Methoden/Klassen liegt, die zur Internal-Facade-Namenskonvention (`*BM`/`*Service`/`*Manager`) gehören, und dass Functions/Components stattdessen `Propagation.MANDATORY` verwenden (nie eine eigene neue Transaktion öffnen). Verhindert exakt den Fehler aus `references/transactions.md`: Transaktionsgrenze am Controller oder Connector.
+Prüft, dass die `@Transactional`-Annotation ausschließlich auf Methoden/Klassen der Internal Facade (`*Service`) liegt, und dass Functions/Components stattdessen `Propagation.MANDATORY` verwenden (nie eine eigene neue Transaktion öffnen). Verhindert exakt den Fehler aus `references/transactions.md`: Transaktionsgrenze am Controller oder Connector.
 
 **Zusätzlich prüfen:** Jede `@Transactional`-Annotation hat `readOnly` explizit gesetzt (nicht auf den Default verlassen) — siehe `references/transactions.md`, Abschnitt "`readOnly` ist Pflichtangabe". Ergänzend, falls `@TransactionalEventListener` verwendet wird: `fallbackExecution` sollte explizit `true` sein, außer bewusst anders entschieden (siehe `references/transactions.md`, Abschnitt "Events und Transaktionen") — der Default `false` führt sonst dazu, dass der Listener außerhalb einer Transaktion stillschweigend nie läuft.
 
@@ -81,6 +81,12 @@ Zwei gegenläufige Prüfungen für die Ausnahme-Regel:
 - Jede Klasse mit Suffix `*Utils` muss im Package `..shared..` liegen.
 - Das Package `..shared..` darf **keine** Abhängigkeit zu einem fachlichen Komponenten-Package haben.
 
+### Regel 7 — API-Klassen (externes Modell) nur ab der External Facade
+
+Prüft, dass Klassen im Package `api.**.model` (das externe Modell, siehe `SKILL.md`, Abschnitt "Modell-Grenze: wo internes und externes Modell umgewandelt werden") **nicht** von der Internal Facade (`*Service`), Functions/Components oder Repositories referenziert werden. Diese Schichten kennen nur `*Entity`-Klassen aus `model/`; die Umwandlung zwischen internem und externem Modell findet ausschließlich an der External Facade statt (`*Converter` in `api/converter/` oder Spring-Data-Projektion).
+
+**Ausnahme:** Version-stabile Value-Typen — Enums **und** Strong-ID-/Value-Typen (z. B. `record PersonId(String id)`) — dürfen aus `api.**.model` im Repository/Service/Component verwendet werden und fallen nicht unter diese Regel; ein Mapping lohnt erst mit API-Versionierung. Vollwertige DTOs (`PersonV2`) bleiben verboten — eine Spring-Data-Projektion darf daher nur auf das interne Read-Modell zeigen, nicht auf die versionierte API-Klasse (sonst schlägt genau diese Regel an). Damit wird der Review-Fehlschluss "Service gibt eine Modellklasse zurück = Verstoß" gegenstandslos: Ein Service (Internal Facade), der ein `*Entity` zurückgibt, ist **korrekt** — verboten ist nur das *DTO* in dieser Schicht.
+
 ## Nächster Schritt
 
-Sobald die Konzepte hier bestätigt sind, werden daraus konkrete `@ArchTest`-Klassen für Regel 3–6 (ein Test pro Regel) [web:18][web:26][web:29] — Regel 1–2 sind mit dem Spring-Modulith-Test oben bereits abgedeckt, sobald er ins Projekt aufgenommen wird und mindestens zwei Komponenten existieren.
+Sobald die Konzepte hier bestätigt sind, werden daraus konkrete `@ArchTest`-Klassen für Regel 3–7 (ein Test pro Regel) [web:18][web:26][web:29] — Regel 1–2 sind mit dem Spring-Modulith-Test oben bereits abgedeckt, sobald er ins Projekt aufgenommen wird und mindestens zwei Komponenten existieren.
