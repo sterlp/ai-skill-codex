@@ -1,5 +1,5 @@
 ---
-name: komponenten-architektur
+name: component-architecture
 description: Definiert und prüft die Backend-Komponenten-Architektur (externe Fassade, interne Fassade, Functions, Repository, Connector, shared Utilities) für Spring-Boot-Backend-Projekte. Use when neuer Code strukturiert wird, Package-/Modul-Grenzen, Transaktionsgrenzen, Namenskonventionen, Testbarkeit oder ArchUnit-/Modulith-Regeln geprüft werden, oder wenn "Komponenten Architektur", "Business Facade", "Transaktionsmanagement", "Paketstruktur", "shared" oder "Connector" erwähnt werden.
 ---
 
@@ -33,7 +33,7 @@ Der Aufruf-Fluss External Facade → Internal Facade → Functions → Repositor
   - [ ] Gehört alles hierher? -> als Function/Component extrahieren
   - [ ] Stimmt das Abstraktionslevel? -> Details in eine Function auslagern
   - [ ] Fremde Orchestrierung hier drin? -> zurück zur zuständigen Internal Facade
-  - [ ] Versteckter, unbenannter Service oder Component? -> als eigenen Baustein extrahieren
+  - [ ] Versteckter, unbenannter Service? -> als eigenen Baustein extrahieren
   ```
   Nur wenn alle vier "Nein" sind, ist eine Überschreitung eine seltene Ausnahme — bei jeder weiteren Änderung neu prüfen.
 
@@ -71,7 +71,7 @@ Der Compiler erzwingt die Richtung dann physisch, ein Agent arbeitet pro Modul m
 | Schicht | Zweck | Annotation (Spring Boot) |
 |---|---|---|
 | External Facade | Extern→intern übersetzen, delegieren, Versionierung/Caching/AuthN/AuthZ | `@RestController` |
-| Internal Facade | Workflow, Transaktionsmanagement, Autorisierung/Policies, Caching | `@Service` (= `*Manager`, EJB-Terminologie) |
+| Internal Facade | Workflow, Transaktionsmanagement, Autorisierung/Policies, Caching | `@Service` |
 | Functions/Components | Ein Use-Case-Schritt, einzeln testbar | `@Component` |
 | Repository | Persistenz-Abstraktion | `@Repository` |
 | Connector | Intern→extern übersetzen (spiegelverkehrt zur External Facade) | `@Component`/`@Connector` |
@@ -89,6 +89,32 @@ Paketkonvention: `de.<company>.<app>.[api|bl].<xyz>`; pro Komponente `api/`, `mo
 ### Reifegrad der Internal Facade: Orchestrierung
 
 Wächst die Internal Facade, wird Logik an Functions/Components delegiert, bis nur noch **Kontrollfluss** (if/loop, Transaktionsgrenze) bleibt. Die Transaktionsgrenze bleibt dabei immer bei ihr — Details: [references/transactions.md](references/transactions.md).
+
+## Modell-Grenze: wo internes und externes Modell umgewandelt werden
+
+Zwei Klassenfamilien, unterscheidbar am `*Entity`-Suffix und am Package (nicht daran, ob "ein Suffix da ist" — API-Klassen tragen bei Versionierung selbst einen):
+
+- **Entity-Klassen** — Suffix `*Entity`, Package `model/`. Das **interne Modell**. Lebt in Internal Facade, Functions/Components und Repository.
+- **API-Klassen** — **kein Suffix** (der Suffix sitzt am Domain-Modell `*Entity`, darum braucht die API-Klasse keinen), Package `api.<modul>.model`. Das **externe Modell**. Lebt ab der External Facade nach außen. Nur bei API-Versionierung kommt ein Versions-Suffix (`V1`/`_V1`, `V2`, …) an Resource **und** API-Klasse.
+
+**Die DTO-Grenze** (altes Synonym für **API-Grenze**, hier gleichbedeutend gebraucht — kein `*DTO`-Suffix gemeint) **liegt an der External Facade** (Resource/Controller), nicht an der Internal Facade. Dort und nur dort wird gewandelt — per `*Converter` in `api/converter/` oder per Spring-Data-Projektion. Eine Internal Facade, die eine **API-Klasse (DTO)** annimmt oder zurückgibt, ist ein Fehler.
+
+**Ausnahme — version-stabile Value-Typen** dürfen die Grenze überqueren und aus dem `api`-Layer im Repository/Service/Component verwendet werden:
+
+- **Enums** — ein Enum-Mapping lohnt erst mit API-Versionierung; bis dahin dasselbe Enum in beiden Welten statt eines sinnfreien Klons.
+- **Strong-IDs / Value-Typen** (z. B. `record PersonId(String id)`) — ein separater interner Klon brächte keinen Mehrwert.
+
+Vollwertige DTOs (`PersonV2`) fallen **nicht** unter die Ausnahme — die bleiben an der External Facade. **Spring-Data-Projektionen** zielen darum auf das interne Read-Modell (Entity oder Lese-DTO im `model/`-Package), nie auf die versionierte API-Klasse — sonst koppelt das Repository an die API-Version, und eine neue Version (`PersonV3`) müsste Query/Projektion anfassen. Die geteilten Value-Typen (Enums, Strong-IDs) dürfen darin natürlich vorkommen.
+
+**Versioniert wird nur das externe Modell.** Es gibt **keine** versionierten Entities — `PersonEntity` und der Service-Layer existieren immer in genau einer Version. Versionen leben ausschließlich auf der API-Seite: `PersonResourceV1`/`PersonV1` delegiert per Converter an `PersonResourceV2`, indem es `PersonV1` → `PersonV2` mappt; nur die neueste Resource-Version greift über den Service auf `PersonEntity` zu. Genau das ist der Sinn der Wandlung: die interne Version bleibt stabil, während außen mehrere API-Versionen nebeneinander bestehen.
+
+**Warum die Grenze an der External Facade liegt und nicht an der Internal Facade:** Internal Facades rufen einander auf. Läge die Grenze bei ihnen, müsste bei *jedem* Service-zu-Service-Aufruf Entity → API → Entity gemappt werden — raus aus der Schicht und sofort wieder rein. Reine Mapping-Zeremonie ohne Erkenntnisgewinn, und jede Feldänderung schlägt auf mehrere Konverter durch. Gewandelt wird genau einmal: dort, wo der Prozess das System wirklich verlässt.
+
+**Eigenes Repository direkt nutzen:** Eine Internal Facade darf ihr eigenes Repository direkt aufrufen. Eine zusätzliche Fassade davor oder eine DTO-Hülle nur für den eigenen Aufruf ist kein Ziel — Repositories sind privat zur **Komponente**, nicht privat zur Function.
+
+**Gotcha — detachte Entities:** Die Transaktion endet an der Internal Facade (siehe [references/transactions.md](references/transactions.md)). Was die External Facade bekommt, ist **detached** — kein Lazy-Loading, keine Navigation über `@OneToMany` außerhalb. Alles, was der Aufrufer braucht, muss innerhalb der Transaktion geladen sein; sonst gehört es in eine Projektion oder eine eigene Facade-Methode. Das ist der eigentliche Preis dieser Entscheidung — bewusst getroffen, nicht aus Bequemlichkeit.
+
+**Am Connector liegt dieselbe Grenze — spiegelverkehrt:** Der Connector wandelt das interne Datenmodell (`*Entity`) in die externen API-Klassen des Fremdsystems, die er befüttert (gespiegelte Richtung zur External Facade, siehe Aufbau-Tabelle). Dieses Fremdmodell ist aber weder ein `*Entity` noch eine eigene API-Klasse aus `api.<modul>.model` — es gehört dem Connector und modelliert das fremde System; es fällt damit nicht unter die obige Zwei-Familien-Zuordnung oder Regel 7.
 
 ## Zugriffsregeln zwischen Komponenten
 
@@ -145,6 +171,8 @@ Erzwingt Schichtzugriff, Zyklenfreiheit, Namenskonvention, Transaktionsgrenze, `
 
 - Transaktionsgrenze am Controller/Connector statt an der internen Fassade.
 - Connector-Call innerhalb einer Transaktion ohne bewussten Rollback-Grund.
+- API-Klasse in der Internal Facade statt erst in der External Facade gewandelt (erzwingt Mapping bei jedem Service-zu-Service-Aufruf).
+- Lazy-Loading-Zugriff in der External Facade auf ein detachtes Entity (statt Projektion oder eigener Facade-Methode innerhalb der Transaktion).
 - Fremde Entität direkt verändert oder per Cascade statt über deren Facade.
 - Zyklische Abhängigkeit zwischen Komponenten (beidseitige Entity-Beziehung).
 - Zu viele Entities in einer Komponente (zu grob geschnitten).
