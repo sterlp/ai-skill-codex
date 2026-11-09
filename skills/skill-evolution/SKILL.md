@@ -23,7 +23,7 @@ finished story. This check never starts another review loop.
 2. Skill proposals and problems from Dev/Plan reports and compaction summaries.
 3. AGENTS*.md: generic, procedure-like passages (build recipes, traps, test patterns). Migrate them
    into a skill and leave only the trigger line ("X → skill y").
-4. Corrections the PO had to repeat in this cycle.
+4. Corrections the Jon had to repeat in this cycle.
 
 ## Loop
 
@@ -47,7 +47,7 @@ finished story. This check never starts another review loop.
 - A rule about how docs are written belongs to the doc method, not to a skill.
 - Cross-project behaviour rules go to the memory tool. Promote a project skill to a global one only
   after it proved useful in at least two projects.
-- Agents write the skill; the PO reads every change back before accepting it.
+- Agents write the skill; the Jon reads every change back before accepting it.
 
 ## Wiki file headers
 
