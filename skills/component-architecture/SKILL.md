@@ -1,192 +1,203 @@
 ---
 name: component-architecture
-description: Definiert und prüft die Backend-Komponenten-Architektur (externe Fassade, interne Fassade, Functions, Repository, Connector, shared Utilities) für Spring-Boot-Backend-Projekte. Use when neuer Code strukturiert wird, Package-/Modul-Grenzen, Transaktionsgrenzen, Namenskonventionen, Testbarkeit oder ArchUnit-/Modulith-Regeln geprüft werden, oder wenn "Komponenten Architektur", "Business Facade", "Transaktionsmanagement", "Paketstruktur", "shared" oder "Connector" erwähnt werden.
+description: Domain-cut component architecture for Spring Boot backends and their React/TypeScript UI — facades, functions, repository, connector, shared; pages and UI components; Maven modules by domain with own api modules and generated TypeScript types; plug-in modules; transactions, naming, testability, ArchUnit/Spring Modulith. Use when structuring new code, adding a feature, component, page or module, deciding where logic, transactions or server calls belong, reviewing boundaries or naming, setting up tests, or when "component architecture", "Komponenten-Architektur", "facade", "connector", "shared", "page", "widget" or "api module" are mentioned.
 ---
 
-# Komponenten-Architektur
+# Component architecture
 
-Muster für Spring-Boot-Backends, um Code fachlich statt technisch zu schneiden. Basiert auf ["Teil 1"](https://www.youtube.com/watch?v=luaDzMKyF0g) und ["Teil 2"](https://www.youtube.com/watch?v=41coSMipVaA).
+Cut code by **domain, not by technology** — in the backend, in the UI and in the Maven modules. The same
+few patterns apply everywhere: a domain component has one entry surface (its service; in the UI its pages), small single-purpose
+building blocks behind it, and talks to other domain components only through their entry point.
+Based on the talks ["Part 1"](https://www.youtube.com/watch?v=luaDzMKyF0g) and
+["Part 2"](https://www.youtube.com/watch?v=41coSMipVaA).
 
-## Wann anwenden
+## Step 0: use the project's names — or ask
 
-- Neues Backend-Modul/Microservice wird aufgesetzt, oder ein Monolith wird in fachliche Pakete zerlegt.
-- Es soll entschieden werden, in welcher Schicht Logik, Transaktionen, Caching oder Autorisierung liegen.
-- Ein Reviewer prüft Namenskonsistenz oder Package-Struktur.
-- Ein neues Feature package soll eingeführt werden.
+This skill defines **roles and rules**. The project defines the **names** (suffixes, package names,
+exported packages, test names).
 
-## Begriffsklärung: Komponente ≠ Maven-Modul
+1. Read the project's architecture doc first (e.g. `docs/**/*architektur*`, `docs/**/*architecture*`,
+   `AGENTS.md`, ADRs). **The project doc overrides the defaults below**; roles and rules stay.
+2. No doc: derive the mapping from the code — count suffixes and package names. Map by
+   **role, not by name**: a class the service calls for one step is a function, whatever it is called
+   (e.g. `control/*Control`).
+   **One pattern per role** — suffix and package belong together (`*Control` in `control/` or `*Component`
+   in `component/`). Two patterns for the same role are a defect, usually an unfinished rename, not two
+   concepts. Derive the winner from the code if it is clear (e.g. all classes already carry the new
+   suffix → the package follows), otherwise ask the user. Never add a third variant. New code uses the
+   winner; renaming existing code is its own iteration, only when the user asks for it.
+3. No recognizable pattern (new project, mixed code): **ask the user** — one question per message, your
+   recommendation first — proposing the defaults:
+   backend `*Component` (Spring term), UI `*.component.tsx` (synonyms `.widget.tsx`, `.view.tsx`).
+   Pages are always `*.page.tsx` — unambiguous, not negotiable.
+4. Write the agreed mapping into the project's architecture doc, so the next agent does not guess.
 
-Eine **Komponente** ist ein fachliches Package (`basket`, `payment`, …) — die Grundeinheit dieses Skills. Ein **Maven-Modul** ist eine Build-Einheit. Meist ist eine Komponente nur ein Package im gemeinsamen Modul, kein eigenes Modul. Nur selten wird eine Komponente zum eigenen Modul erhoben (siehe unten). Extremfall: OSGi/JEE-Projekte mit Hot-Swap-Fähigkeit, wo jede Komponente ein eigenes Bundle/EJB-Modul ist — dort Framework-Ermessen, hier kein Standardfall.
+## Terms (used strictly in this skill)
 
-## Fundament: Dependency Rule
+| Term | Meaning |
+|---|---|
+| **Domain component** | A domain unit: backend package `customer`, UI folder `src/customer/`. Same name on both sides, singular, case per language (`business_partner` ↔ `business-partner`). The basic unit of this skill. |
+| **Function** | Building block for one use-case step inside a domain component. Default class suffix `*Component`. |
+| **UI component** | Building block below a page; renders one thing. Default file suffix `*.component.tsx`. |
+| **Module** | Build unit (Maven module, npm package). Holds one or more related domain components. A domain component is usually just a package, not a module. |
+| **api module** | The external model (API classes) of a module; source of the generated TypeScript types. |
 
-Angelehnt an Uncle Bobs *Dependency Rule*: "Source-Code-Abhängigkeiten zeigen nur nach innen." [web:6] Die konkreten Regeln hier sind eine **eigene Ausformulierung** dafür — im Kern deckungsgleich, im Detail eigenständig, nicht wortgleich mit Uncle Bobs Original zu behandeln.
+## Dependency rule
 
-Der Aufruf-Fluss External Facade → Internal Facade → Functions → Repository/Connector zeigt nach außen — das ist okay, weil Functions/Internal Facade gegen eine **Schnittstelle** von Repository/Connector programmieren (Dependency Inversion), nicht gegen die Implementierung. Aufruf-Richtung und Abhängigkeits-Richtung sind verschieden; nur Letztere muss nach innen zeigen.
+Source dependencies point inward only, never in a cycle, coarse → fine (workflow → function, never back
+to the facade). The call flow external facade → internal facade → function → repository/connector points
+outward; that is fine because the caller depends on an **interface** of repository/connector
+(dependency inversion). Only the dependency direction must point inward, not the call direction.
+Every entity belongs to exactly one domain component.
 
-## Design-Prinzipien
+## Roles: backend and UI
 
-- **Law of Demeter:** Eine Klasse kennt nur direkte Abhängigkeiten — begründet, warum Komponenten sich nur über die interne Fassade der anderen ansprechen.
-- **Open/Closed via Strategy:** Für Functions/Components, Connectors und — soweit sinnvoll — Services: neue Variante = neue Klasse hinter derselben Schnittstelle, nie `if`/`switch` in bestehendem Code [web:47]. Neuer Payment-Provider → neuer Connector; neue Rabattregel → neue Function. Die Internal Facade ist ausgenommen, wo sie reiner Workflow ist (der ändert sich zwangsläufig mit dem Prozess) — nur ihre austauschbaren Teil-Strategien folgen der Regel.
-- **Methoden-Größe:** Max. ~60 Zeilen (ein Bildschirm), in jeder Schicht. Vor Aufteilen/Aufweichen prüfen:
+| Role | Backend default (Spring) | UI default (React) | Owns |
+|---|---|---|---|
+| External facade | `*Resource`, `@RestController` | — (the UI calls it) | external ↔ internal model, versioning, authN, HTTP contract |
+| Internal facade | `*Service`, `@Service` | `<name>.page.tsx` (a route) | workflow and control flow. Backend: transaction, authZ/policies, caching. UI: state, server calls, loading/error, wiring UI components |
+| Function / UI component | `*Component`, `@Component` | `*.component.tsx` | one step / one thing; parameters or props in, result or callbacks out; isolated testable. A UI component makes **no** server call |
+| Repository | `*Repository` | — | persistence |
+| Connector | `*Connector` | `<name>.hooks.ts` (server calls) | internal → external, mirror image of the external facade |
+| Entity | `*Entity` in `model/` | — | internal model |
+| API class | api module, no suffix | generated `<name>-api.d.ts` | external model, shared backend ↔ UI |
+| Shared | `<base>.shared.*Utils` | `src/shared/` (e.g. `server-error.component.tsx`) | technical tools without domain logic |
+
+A page is the UI counterpart of a service: the top-level element of a domain component. A
+`customer.component.tsx` that only shows one customer is the UI counterpart of a `ReadCustomerComponent`.
+In the UI, extraction matters even more because UI components get reused more — and every UI component must
+clearly be either **domain-owned** or **shared**. Details: [references/frontend.md](references/frontend.md).
+
+## Access rules (backend and UI)
+
+1. Another domain component is reached **only through its internal facade** (backend: its `*Service`;
+   UI: what it explicitly exports, e.g. a reusable UI component — never its hooks or page internals).
+2. Its functions, repositories, connectors and converters are private.
+3. Its entities and events may be used if the package is declared public (Spring Modulith:
+   `package-info.java` with `@NamedInterface`). Undeclared packages are private.
+4. `shared` may be imported by everyone and knows no domain component.
+5. **Plug-ins report back, the owner counts.** A domain component implementing another one's extension
+   interface (e.g. a message handler) uses only that interface's public types. Cross-cutting work (metrics,
+   retries, logging of the outcome) stays with the owner of the process; the plug-in only returns the
+   result or reason.
+6. **Mutual needs:** pick one direction. Only the owner holds the entity relation (`@ManyToOne(fetch = LAZY)`),
+   never both ways. Changes only through the other facade, never via cascade. Back direction via `*Event`
+   or via ID (`orderService.setTrackingId(...)`), never via an entity reference. The event belongs to the
+   component that is depended on (it publishes); the depending component listens — importing the event
+   follows the existing direction, so no source cycle arises.
+7. **A connector needed by a second domain component:** first look for the real cause — usually a hidden,
+   never-extracted service. If the need is real, the connector becomes its own domain component with a
+   service. Agreed with the user, its own preparation iteration before the feature.
+8. **Prototype exception** (only one domain component): the external facade may read the repository
+   directly. Ends when the second domain component arrives.
+9. Enforce with ArchUnit/Spring Modulith, not by convention: [references/archunit-rules.md](references/archunit-rules.md).
+
+## Modules
+
+Cut Maven modules by domain, the same way as packages:
+
+- **Domain module** (`customer`): related domain components of one domain. As soon as there is more than one
+  domain module, each gets its own **api module** (`customer-api`). TypeScript types are generated
+  (`typescript-generator-maven-plugin`) per domain component into its UI folder — the UI never hand-writes
+  server types.
+- **Plug-in module**: a capability unrelated to the domain (audit, docs hosting, docs assistant). Extract it
+  early: own package root, Spring Boot auto-configuration, own tests and stubs, own `docs/`, the host owns
+  security, config and secrets.
+- From **≥ 10 domain components** in one module: with every new one, check whether a module split is the better
+  choice. Only ever a proposal — **never decide alone**, discuss it with the user, and do it as its own
+  preparation iteration before the feature.
+
+Module kinds, api module, TS generation, plug-in rules, module docs: [references/modules.md](references/modules.md).
+
+## Model boundary
+
+Internal model `*Entity`, external model = API classes in the api module. Convert **once, at the external
+facade** — a service that accepts or returns an API class is a bug; a service returning an `*Entity` is
+correct. Enums and strong IDs may cross. Why, versioning, detached entities:
+[references/model-boundary.md](references/model-boundary.md).
+
+## Transactions, authorization, caching
+
+The transaction boundary is the internal facade — never the external facade or the connector. Functions
+join it (`Propagation.MANDATORY`); a repository opens its own only by exception (bulk update, native query). Every `@Transactional` sets `readOnly` explicitly. Connector calls stay outside
+the transaction unless there is a deliberate rollback reason. Details:
+[references/transactions.md](references/transactions.md).
+
+## Testability
+
+Entry point first, then variants in isolation — backend and UI alike: an end-to-end HTTP test against the
+`*Resource` (one Spring context, external systems as stubs in that context), variants in an isolated
+`<Name>ComponentTest`; in the UI the page first, a render test per UI component.
+Details: [references/testing.md](references/testing.md), UI: [references/frontend.md](references/frontend.md).
+
+## Design principles
+
+- **Open/closed via strategy:** for functions, UI components, connectors and — where it fits — services: a new variant is
+  a new class behind the same interface, never a new `if`/`switch` branch in existing code (new payment
+  provider → new connector; new discount rule → new function). A facade that is pure workflow is exempt;
+  its exchangeable steps are not.
+- **Size:** methods max ~60 lines, classes/files max ~500 lines, in every layer (pages and UI components too).
+  Before going over, check:
   ```
-  - [ ] Gehört alles hierher? -> als Function/Component extrahieren
-  - [ ] Stimmt das Abstraktionslevel? -> Details in eine Function auslagern
-  - [ ] Fremde Orchestrierung hier drin? -> zurück zur zuständigen Internal Facade
-  - [ ] Versteckter, unbenannter Service? -> als eigenen Baustein extrahieren
+  - [ ] Does everything belong here? -> extract a function/UI component or a new domain component
+  - [ ] Is the abstraction level right? -> move details into a function/UI component
+  - [ ] Foreign orchestration in here? -> back to the responsible service/page/module
+  - [ ] A hidden, unnamed building block? -> extract it as its own building block
   ```
-  Nur wenn alle vier "Nein" sind, ist eine Überschreitung eine seltene Ausnahme — bei jeder weiteren Änderung neu prüfen.
+  Only if all four are "no" is going over a rare exception — re-check on every change.
+- **Internal facade maturity:** as it grows, it delegates to functions until only control flow (if/loop,
+  transaction boundary) is left. The transaction boundary stays with it.
+- **Docs:** a module's docs live in the module (`<module>/docs/`); comments only for what the code cannot tell.
 
-## Testbarkeit
-
-**Ende-zu-Ende zuerst (Test-Zwiebel):** Resource → Service → Component → Repository → In-Memory-DB, externe Systeme über einen **Stub-Endpunkt** (echter HTTP-Test-Server, aufgezeichnete Antworten, Introspektion, Fehler-Injection) statt In-Process-Mock oder echtem Sandbox-Call.
-
-**Varianten/Edge-Cases isoliert an der Function/Component**, eigene `<Name>ComponentTest`-Klasse — Gründe: Wartbarkeit, Encapsulation, Testability. Mockito optional, nicht zwingend.
-
-Läuft ein solcher Test mit echtem Spring-Context gegen eine `MANDATORY`-Function, braucht der Test selbst eine Transaktion, sonst `IllegalTransactionStateException` — kein Testfehler, sondern korrektes Verhalten.
-
-**Details (Stub-Konventionen, TransactionTemplate, stabile Suites, Datenreset):** [references/testing.md](references/testing.md)
-
-## Kernprinzip: gerichteter, azyklischer Graph
-
-- Abhängigkeiten zeigen **nur in eine Richtung**, nie zyklisch.
-- Struktur **grob → fein**: Workflow → Funktion, nie zurück zur Fassade.
-- Mehr eingehende Abhängigkeiten = teurere, riskantere Änderungen.
-- Jede Entität gehört genau einer Komponente; fremde Entitäten nur über deren Fassade anfragen.
-
-### Bei wachsendem Projekt: echtes Maven-Modul erwägen
-
-Ab **≥ 10 Packages** im Projekt: bei jedem neuen Package prüfen, ob Extraktion in ein eigenes Modul (mit `docs`-Verzeichnis für Modulith-PlantUML) sinnvoller ist — inklusive verwandter bestehender Packages.
+## Workflow: new domain component
 
 ```
-1. Direkt neues Modul: neue Funktion fachlich klar trennbar, Schwelle erreicht.
-2. Erst aufräumen: bestehendes Modul unübersichtlich, neue Funktion braucht (noch) kein eigenes Modul.
-3. Beides: aufräumen, dann neues Modul.
+- [ ] Step 0 done: project names known (or agreed with the user and written down)
+- [ ] Name = domain term, identical in backend package and UI folder
+- [ ] >= 10 domain components in the module? Propose a module split to the user first
+- [ ] Entities with relations only inside this domain component (exception: one one-sided relation to a foreign entity, access rule 6)
+- [ ] Backend: repository, functions (+ <Name>ComponentTest), service, resource, converter
+- [ ] API classes in the api module; TS types regenerated by the build, not hand-written
+- [ ] UI: <name>.page.tsx, hooks for server calls, UI components without server calls
+- [ ] UI components: domain-owned or shared/ — decided explicitly
+- [ ] Connector only if needed, private to the domain component; stub for it in the test context
+- [ ] Technical helpers to shared, never domain logic there
+- [ ] Mutual need: one direction, back via event or ID
+- [ ] Dependency graph: no cycles, no jump back
+- [ ] End-to-end test over the stack; page test in the UI
+- [ ] From the 2nd domain component: ArchUnit/Modulith, resolve the prototype exception
 ```
 
-Der Compiler erzwingt die Richtung dann physisch, ein Agent arbeitet pro Modul mit kleinerem Kontext. **Nie eigenständig entscheiden — immer erst mit Team/User absprechen**; das Kriterium ist nur ein begründeter Vorschlag für dieses Gespräch.
-
-## Aufbau einer Komponente
-
-| Schicht | Zweck | Annotation (Spring Boot) |
-|---|---|---|
-| External Facade | Extern→intern übersetzen, delegieren, Versionierung/Caching/AuthN/AuthZ | `@RestController` |
-| Internal Facade | Workflow, Transaktionsmanagement, Autorisierung/Policies, Caching | `@Service` |
-| Functions/Components | Ein Use-Case-Schritt, einzeln testbar | `@Component` |
-| Repository | Persistenz-Abstraktion | `@Repository` |
-| Connector | Intern→extern übersetzen (spiegelverkehrt zur External Facade) | `@Component`/`@Connector` |
-| Entity | Fachliches Datenmodell, im `model`-Package | `@Entity` |
-
-Paketkonvention: `de.<company>.<app>.[api|bl].<xyz>`; pro Komponente `api/`, `model/`, `repository/`, Facade direkt auf oberster Ebene (kein `facade`-Package nötig).
-
-### Connector-Details
-
-- **Ein Connector gehört einer Komponente**, modul-privat.
-- **Selten: mehrere Komponenten brauchen ihn** → zuerst Ursache prüfen (oft ein versteckter, nie extrahierter shared Service), kein Extraktions-Automatismus.
-- Bestätigt sich echter Bedarf: eigene Komponente + Service, mit Team/User besprochen, als **eigene Vorbereitungs-Iteration** vor dem neuen Feature — nicht vermischen.
-- **Transaktions-/Timeout-Regeln:** [references/transactions.md](references/transactions.md#connector-aufrufe-und-transaktionen)
-
-### Reifegrad der Internal Facade: Orchestrierung
-
-Wächst die Internal Facade, wird Logik an Functions/Components delegiert, bis nur noch **Kontrollfluss** (if/loop, Transaktionsgrenze) bleibt. Die Transaktionsgrenze bleibt dabei immer bei ihr — Details: [references/transactions.md](references/transactions.md).
-
-## Modell-Grenze: wo internes und externes Modell umgewandelt werden
-
-Zwei Klassenfamilien, unterscheidbar am `*Entity`-Suffix und am Package (nicht daran, ob "ein Suffix da ist" — API-Klassen tragen bei Versionierung selbst einen):
-
-- **Entity-Klassen** — Suffix `*Entity`, Package `model/`. Das **interne Modell**. Lebt in Internal Facade, Functions/Components und Repository.
-- **API-Klassen** — **kein Suffix** (der Suffix sitzt am Domain-Modell `*Entity`, darum braucht die API-Klasse keinen), Package `api.<modul>.model`. Das **externe Modell**. Lebt ab der External Facade nach außen. Nur bei API-Versionierung kommt ein Versions-Suffix (`V1`/`_V1`, `V2`, …) an Resource **und** API-Klasse.
-
-**Die DTO-Grenze** (altes Synonym für **API-Grenze**, hier gleichbedeutend gebraucht — kein `*DTO`-Suffix gemeint) **liegt an der External Facade** (Resource/Controller), nicht an der Internal Facade. Dort und nur dort wird gewandelt — per `*Converter` in `api/converter/` oder per Spring-Data-Projektion. Eine Internal Facade, die eine **API-Klasse (DTO)** annimmt oder zurückgibt, ist ein Fehler.
-
-**Ausnahme — version-stabile Value-Typen** dürfen die Grenze überqueren und aus dem `api`-Layer im Repository/Service/Component verwendet werden:
-
-- **Enums** — ein Enum-Mapping lohnt erst mit API-Versionierung; bis dahin dasselbe Enum in beiden Welten statt eines sinnfreien Klons.
-- **Strong-IDs / Value-Typen** (z. B. `record PersonId(String id)`) — ein separater interner Klon brächte keinen Mehrwert.
-
-Vollwertige DTOs (`PersonV2`) fallen **nicht** unter die Ausnahme — die bleiben an der External Facade. **Spring-Data-Projektionen** zielen darum auf das interne Read-Modell (Entity oder Lese-DTO im `model/`-Package), nie auf die versionierte API-Klasse — sonst koppelt das Repository an die API-Version, und eine neue Version (`PersonV3`) müsste Query/Projektion anfassen. Die geteilten Value-Typen (Enums, Strong-IDs) dürfen darin natürlich vorkommen.
-
-**Versioniert wird nur das externe Modell.** Es gibt **keine** versionierten Entities — `PersonEntity` und der Service-Layer existieren immer in genau einer Version. Versionen leben ausschließlich auf der API-Seite: `PersonResourceV1`/`PersonV1` delegiert per Converter an `PersonResourceV2`, indem es `PersonV1` → `PersonV2` mappt; nur die neueste Resource-Version greift über den Service auf `PersonEntity` zu. Genau das ist der Sinn der Wandlung: die interne Version bleibt stabil, während außen mehrere API-Versionen nebeneinander bestehen.
-
-**Warum die Grenze an der External Facade liegt und nicht an der Internal Facade:** Internal Facades rufen einander auf. Läge die Grenze bei ihnen, müsste bei *jedem* Service-zu-Service-Aufruf Entity → API → Entity gemappt werden — raus aus der Schicht und sofort wieder rein. Reine Mapping-Zeremonie ohne Erkenntnisgewinn, und jede Feldänderung schlägt auf mehrere Konverter durch. Gewandelt wird genau einmal: dort, wo der Prozess das System wirklich verlässt.
-
-**Eigenes Repository direkt nutzen:** Eine Internal Facade darf ihr eigenes Repository direkt aufrufen. Eine zusätzliche Fassade davor oder eine DTO-Hülle nur für den eigenen Aufruf ist kein Ziel — Repositories sind privat zur **Komponente**, nicht privat zur Function.
-
-**Gotcha — detachte Entities:** Die Transaktion endet an der Internal Facade (siehe [references/transactions.md](references/transactions.md)). Was die External Facade bekommt, ist **detached** — kein Lazy-Loading, keine Navigation über `@OneToMany` außerhalb. Alles, was der Aufrufer braucht, muss innerhalb der Transaktion geladen sein; sonst gehört es in eine Projektion oder eine eigene Facade-Methode. Das ist der eigentliche Preis dieser Entscheidung — bewusst getroffen, nicht aus Bequemlichkeit.
-
-**Am Connector liegt dieselbe Grenze — spiegelverkehrt:** Der Connector wandelt das interne Datenmodell (`*Entity`) in die externen API-Klassen des Fremdsystems, die er befüttert (gespiegelte Richtung zur External Facade, siehe Aufbau-Tabelle). Dieses Fremdmodell ist aber weder ein `*Entity` noch eine eigene API-Klasse aus `api.<modul>.model` — es gehört dem Connector und modelliert das fremde System; es fällt damit nicht unter die obige Zwei-Familien-Zuordnung oder Regel 7.
-
-## Zugriffsregeln zwischen Komponenten
-
-- Zugriff nur über die **interne Fassade** der anderen Komponente.
-- Nur bei potenzieller Microservice-Eigenständigkeit: Connector → deren externe Fassade statt interner Fassade.
-- Ausnahme: `shared`-Package (siehe unten), von jeder Komponente importierbar.
-- **Prototyp-Sonderfall (nur eine Komponente):** Repository direkt aus External Facade lesen ist okay, ArchUnit/Modulith lohnt sich noch nicht. **Endet, sobald eine zweite Komponente hinzukommt.**
-- Erzwingen mit ArchUnit/Modulith, nicht nur Konvention: [references/archunit-rules.md](references/archunit-rules.md)
-
-### Wechselseitige Abhängigkeiten auflösen
-
-- **Eine Integrationsrichtung wählen:** nur die besitzende Komponente hält die Entity-Beziehung (`@ManyToOne(fetch=LAZY)`), nie beidseitig.
-- **Ändern nur über die fremde Facade**, nie Cascade/direkter Zugriff.
-- **Imports-Kriterium:** Model/Entity-Import einer fremden Komponente ist okay; alles andere (API, Repository, Function, Fassade-Interna) ist ein Verstoß.
-- **Rückrichtung per `*Event`** (`ApplicationEventPublisher`/`@EventListener`, im `model`-Package) — kein echter Zyklus, da keine direkte Referenz.
-- **Rückkanal per ID**, nicht per Entity-Referenz (z. B. `orderFacade.setTrackingId(...)`).
-
-## Shared / Utility-Klassen
-
-Technisches Handwerkszeug ohne Fachlogik im Package `<basispackage>.shared`, Klassen enden auf `*Utils`, zustandslos/statisch, kein `@Component` außer nötig. Von jeder Komponente importierbar (einzige Ausnahme zur Fassaden-Regel), darf selbst aber keine Komponente kennen. Fachliche Regeln oder DB-Zugriffe gehören nicht hierher.
-
-## Transaktionsmanagement, Autorisierung, Caching
-
-Ausschließlich in der internen Fassade, nie in Controller oder Connector.
-
-**ACID, MANDATORY-Propagation, readOnly-Pflicht, Timeouts, `@TransactionalEventListener`:** [references/transactions.md](references/transactions.md)
-
-## Namenskonvention
-
-Beliebiges Schema erlaubt, Konsistenz ist entscheidend. **Vollständige Tabelle:** [references/naming-conventions.md](references/naming-conventions.md)
-
-## Architektur-Prüfung mit ArchUnit / Spring Modulith
-
-Erzwingt Schichtzugriff, Zyklenfreiheit, Namenskonvention, Transaktionsgrenze, `shared`-Ausnahme als Test statt Dokumentation. Spring Modulith prüft Zyklen/internen Zugriff automatisch, generiert UML. **Regeln und Zeitpunkt der Einrichtung:** [references/archunit-rules.md](references/archunit-rules.md)
-
-## Workflow: neue Komponente anlegen
+## Workflow: extract a module
 
 ```
-- [ ] Fachpaket anlegen (Name = Fachbegriff)
-- [ ] Bei >= 10 Packages im Projekt: Modul-Extraktion statt neues Package prüfen
-- [ ] Entity(s) modellieren, nur mit Bezug in dieser Komponente
-- [ ] Repository, Functions/Components (inkl. <Name>ComponentTest), Interne Fassade, Externe Fassade
-- [ ] Connector nur wenn nötig; modul-privat, außer bestätigter Mehrfachbedarf
-- [ ] Stub-Endpunkt für den Connector bereitstellen
-- [ ] Technische Helfer nach shared.*Utils, nicht in die Komponente
-- [ ] Wechselseitiger Bedarf: eine Richtung wählen, Rückrichtung per Event
-- [ ] Abhängigkeitsgraph prüfen: keine Zyklen, kein Rücksprung
-- [ ] Ende-zu-Ende-Test über den Stack ergänzen
-- [ ] Ab 2. Komponente: ArchUnit/Modulith einrichten, Prototyp-Sonderfall auflösen
-- [ ] Modul-/Connector-Split: mit Team/User absprechen, als eigene Iteration
+- [ ] Agreed with the user; its own iteration, not mixed with a feature
+- [ ] Kind decided: domain module (+ api module) or plug-in module (references/modules.md)
+- [ ] Moved, not copied; old package removed in the same iteration
+- [ ] Dependencies between modules acyclic (the compiler now enforces it)
+- [ ] Module docs/ with feature doc, architecture doc, ADRs; root docs only reference it
+- [ ] Module tests run on their own (mvn -pl <module> verify)
+- [ ] Host wiring documented: security, config, secrets, extension beans
 ```
 
-## Häufige Fehler
+## Common mistakes (not obvious from the rules)
 
-- Transaktionsgrenze am Controller/Connector statt an der internen Fassade.
-- Connector-Call innerhalb einer Transaktion ohne bewussten Rollback-Grund.
-- API-Klasse in der Internal Facade statt erst in der External Facade gewandelt (erzwingt Mapping bei jedem Service-zu-Service-Aufruf).
-- Lazy-Loading-Zugriff in der External Facade auf ein detachtes Entity (statt Projektion oder eigener Facade-Methode innerhalb der Transaktion).
-- Fremde Entität direkt verändert oder per Cascade statt über deren Facade.
-- Zyklische Abhängigkeit zwischen Komponenten (beidseitige Entity-Beziehung).
-- Zu viele Entities in einer Komponente (zu grob geschnitten).
-- Fachlogik in `shared.*Utils`, weil "praktisch".
-- Internal Facade wächst mit eigener Logik statt zu delegieren.
-- Neue Variante per `if`/`switch` statt neuer Klasse hinter der Schnittstelle.
-- 60-Zeilen-Grenze überschritten ohne die vier Diagnosefragen zu prüfen.
-- Code beim Auslagern kopiert statt als Baustein extrahiert.
-- Neues Package trotz ≥10-Package-Schwelle ohne Modul-Extraktion zu erwägen.
-- Modul-Split oder Connector-Extraktion eigenständig durchgeführt, ohne Team/User-Absprache oder eigene Vorbereitungs-Iteration — oder Komponente/Maven-Modul gleichgesetzt.
-- Prototyp-Sonderfall bleibt bestehen, obwohl längst eine zweite Komponente existiert.
-- Connector-Extraktion ohne vorherige Prüfung, ob ein versteckter shared Service die wahre Ursache ist.
-- Varianten nur per Ende-zu-Ende-Test geprüft, keine isolierte `<Name>ComponentTest`.
-- `@Transactional` statt `TransactionTemplate` im Spring-Context-Test (verschleiert Speicherfehler durch Rollback).
-- Globaler `TestDataHelper.reset()` als Standard statt gezielter Reset im Given-Teil.
-- E2E-Test gegen echtes Sandbox-System statt Stub-Endpunkt (instabil/teuer).
-- Client-Timeout kürzer/gleich dem Transaktions-Timeout statt mit Puffer (z. B. +1s) darüber.
+- Names guessed instead of taken from the project doc or asked (Step 0).
+- Synonyms treated as different roles (`*Control` vs. `*Component`), or a new synonym introduced.
+- `@Transactional` on a Spring test method — the rollback hides persistence bugs; use `TransactionTemplate`.
+- `REQUIRES_NEW` chosen without the user — never your own decision. Writes from a listener join (`BEFORE_COMMIT`); work that must not join goes `@Async`.
+- More than one Spring test context (different profiles/`@MockitoBean` per class) — a setup bug, not normal.
+- Plug-in does the owner's cross-cutting work (counts, retries) instead of reporting back.
+- `src/shared/` UI component or `*Utils` importing domain types — it belongs to that domain.
+- Module split or connector extraction done alone or mixed into a feature — always the user's decision,
+  its own iteration.
+
+## References
+
+1. [modules.md](references/modules.md) — module kinds, api module, TS generation, plug-in modules, module docs
+2. [frontend.md](references/frontend.md) — pages, UI components, hooks, shared, UI tests
+3. [model-boundary.md](references/model-boundary.md) — entity vs API class, versioning, detached entities
+4. [transactions.md](references/transactions.md) — MANDATORY, readOnly, connector calls, events
+5. [testing.md](references/testing.md) — end-to-end, stubs, `TransactionTemplate`, test data
+6. [naming-conventions.md](references/naming-conventions.md) — default names, legacy JEE mapping, events
+7. [archunit-rules.md](references/archunit-rules.md) — Spring Modulith, ArchUnit rules
