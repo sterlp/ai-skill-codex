@@ -1,55 +1,55 @@
-# Namenskonvention
+# Naming conventions
 
-Der Skill verwendet **einen kanonischen Namenssatz** (Spring-Sprachgebrauch: `*Resource`, `*Service`, `*Component`, `*Connector`, `*Repository`, `*Entity`, …). Das ist bewusst *ein* Vorschlag statt vieler Alternativen: Benutzt ein Projekt andere Namen, genügt **ein** Mapping von diesen kanonischen Namen auf die Projektnamen (Legacy-Spalte unten), statt im ganzen Skill Varianten mitzuführen. Grund für die Suffixe: API-Klasse und Domain-Modell heißen fachlich oft gleich (beide "Person"), sind aber unterschiedlich aufgebaut. Der Suffix sitzt am **Domain-Modell** (`PersonEntity`), damit die API-Klasse `Person` ohne Suffix kollisionsfrei bleibt.
+**The project defines the names** (see `SKILL.md`, Step 0). This table is the default to propose when the
+project has no recognizable pattern, and the mapping key when it has one: map these defaults to the
+project's names once, in the project's architecture doc — do not carry variants through the code.
 
-| Schicht / Konzept | Kanonischer Name | Spring-Annotation | Legacy (JEE) |
-|---|---|---|---|
-| External Facade | `*Resource` | `@RestController` / `@Controller` | `*BF` / `*BusinessFacade` — *Remote Interface* |
-| Internal Facade | `*Service` | `@Service` | `*BM` / `*BusinessManager` / `*Manager` — *Local Interface* |
-| Function / Component | `*Component` | `@Component` | `*BA` / `*BusinessActivity` / `*Activity` |
-| Connector | `*Connector` | `@Component` / `@Connector` | `*BC` / `*BusinessConnector` / `*ESI` |
-| Repository | `*Repository` | `@Repository` | `*DAO` |
-| Converter | `*Converter` | `@Component` | – |
-| Entity (Domain-Modell) | `*Entity` | `@Entity` | `*BE` / `*BusinessEntity` |
-| API-Klasse (externes Modell) | kein Suffix; versioniert `…V1` / `…V2` | – | – |
-| Event | `*Event` | (kein Bean; siehe Abschnitt "Events" unten) | – |
-| Shared Utility | `*Utils` | – (kein Bean, außer zwingend nötig) | – |
-| Stub-Endpunkt | `*Stub` (z. B. `PaymentProviderStub`) | siehe [testing.md](testing.md) | – |
-| Ende-zu-Ende-Test | `*IT` (z. B. `OrderPlacementIT`) | – | – |
-| Component-Test | `<Name>ComponentTest` | siehe `SKILL.md`, Abschnitt "Testbarkeit" | – |
+Why the suffix sits on the entity: see [model-boundary.md](model-boundary.md).
 
-`*Converter` liegt bei der `*Resource` im Package `api/converter/` und wandelt `*Entity` ↔ API-Klasse (siehe `SKILL.md`, Abschnitt "Modell-Grenze").
+## Default names
 
-## Package-Zuordnung: internes vs. externes Modell
+| Role | Backend default | Spring annotation | UI default | Legacy (JEE) |
+|---|---|---|---|---|
+| External facade | `*Resource` | `@RestController` | — | `*BF` / `*BusinessFacade` (remote interface) |
+| Internal facade | `*Service` | `@Service` | `<name>.page.tsx` (fixed) | `*BM` / `*BusinessManager` / `*Manager` (local interface) |
+| Function / UI component | `*Component` | `@Component` | `*.component.tsx` (or `.widget.tsx` / `.view.tsx`) | `*BA` / `*BusinessActivity` / `*Activity` |
+| Connector | `*Connector` | `@Component` | `<name>.hooks.ts` | `*BC` / `*BusinessConnector` / `*ESI` |
+| Repository | `*Repository` | `@Repository` | — | `*DAO` |
+| Converter | `*Converter` | `@Component` | — | – |
+| Entity | `*Entity` | `@Entity` | — | `*BE` / `*BusinessEntity` |
+| API class | no suffix; versioned `…V1`/`…V2` | – | generated `<name>-api.d.ts` | – |
+| Event | `*Event` | – (no bean) | – | – |
+| Shared utility | `*Utils` in `shared` | – (no bean unless needed) | `src/shared/<x>/<x>.component.tsx` | – |
+| Stub | `*Stub` | test config | project tool | – |
+| Function test | `<Name>ComponentTest` | – | `<name>.component.test.tsx` | – |
 
-Suffix **und** Package unterscheiden die beiden Modellfamilien (siehe `SKILL.md`, Abschnitt "Modell-Grenze: wo internes und externes Modell umgewandelt werden"):
+Folders/packages per domain component: backend `api/` (resource + converter), `model/`, `repository/`,
+`component/` (functions), `connector/`, service at the top level (no `facade` package). UI: `components/`, `hooks/`, `model/`, pages at the top
+level. Projects often name these differently (`entity/`, `control/`) — that is fine once it is written
+down, as long as each role has exactly **one** name. Synonyms side by side are a defect (`SKILL.md`, Step 0).
 
-| Familie | Suffix | Package | Lebt in |
-|---|---|---|---|
-| Entity (internes Modell) | `*Entity` | `model/` | Internal Facade, Functions/Components, Repository |
-| API-Klasse (externes Modell) | **kein Suffix** — der Suffix sitzt am Domain-Modell (`*Entity`), die API-Klasse braucht darum keinen. Nur bei Versionierung `V1`/`_V1` an Resource **und** API-Klasse (`PersonResourceV2`/`PersonV2`) | `api.<modul>.model` | ab External Facade nach außen |
+Module names: domain name, same as backend package and UI folder (case per language:
+`business_partner` ↔ `business-partner`). api module: `<name>-api`.
 
-- Gewandelt wird ausschließlich an der External Facade — per Converter im Package `api/converter/` oder per Spring-Data-Projektion. Eine Internal Facade, die eine API-Klasse annimmt oder zurückgibt, ist ein Fehler.
-- **Ausnahme:** Version-stabile Value-Typen — Enums und Strong-IDs (z. B. `record PersonId(String id)`) — dürfen zwischen beiden Familien geteilt und aus dem `api`-Layer im Repository/Service/Component verwendet werden; ein Mapping lohnt erst mit API-Versionierung. Vollwertige DTOs (`PersonV2`) bleiben an der External Facade.
-- Am Connector liegt dieselbe Grenze spiegelverkehrt: Er wandelt das interne `*Entity`-Modell in die externen API-Klassen des Fremdsystems, die er befüttert. Dieses Fremdmodell ist weder Entity noch eine eigene `api.<modul>.model`-Klasse und gehört dem Connector — es fällt nicht unter diese Zuordnung.
+## Legacy names (JEE)
 
-## Legacy-Namen (JEE) und Remote/Local-Interface
-
-Die Legacy-Spalte oben führt die klassische JEE-Terminologie. Zwei Punkte lohnt es zu kennen, weil sie etwas erklären, das die Spring-Namen verstecken:
-
-- **External Facade = Remote Interface, Internal Facade = Local Interface.** Diese Paarung begründet die Zwei-Fassaden-Trennung: Die External Facade (`*Resource`) ist die *entfernte* Schnittstelle über die Prozessgrenze, die Internal Facade (`*Service`) die *lokale*, in-process aufgerufene Schnittstelle. Wer nur "Resource/Service" liest, sieht diesen Grund nicht mehr — deshalb hier bewusst dokumentiert.
-- `*Manager` (JEE) und `*Service` (Spring) bezeichnen **dieselbe Schicht** — die Internal Facade. Welcher Name im Projekt gilt, ist reine Team-Konvention, keine Architektur-Entscheidung.
+External facade = remote interface, internal facade = local interface — that pairing is the reason for two
+facades. `*Manager` and `*Service` are the same layer; which name applies is team convention.
 
 ## Events
 
-Klassen enden auf `*Event` (z. B. `OrderEvent`) und werden von `ApplicationEventPublisher` genutzt, um die "Wechselseitige Abhängigkeiten auflösen"-Regel aus `SKILL.md` umzusetzen (Rückrichtung zwischen zwei Komponenten ohne direkte Referenz).
+`*Event` classes (e.g. `OrderCreatedEvent`), published via `ApplicationEventPublisher`, resolve the back
+direction between two domain components without a direct reference.
 
-- **Standard-Package: `model`** — bei wenigen Events reicht es, sie direkt neben den Entities im `model`-Package der publizierenden Komponente abzulegen.
-- **Ausnahme `event`-Package:** Erst wenn eine Komponente viele Events hat, wird ein eigenes `event`-Subpackage sinnvoll — das ist die Ausnahme, kein Standardfall, und lohnt sich erst ab einer gewissen Anzahl, nicht schon beim ersten oder zweiten Event.
-- **Gemeinsames Marker-Interface empfehlenswert** (z. B. `DomainEvent`), das alle `*Event`-Klassen implementieren. Damit lassen sich alle Events eines Projekts über eine einzige Typ-Suche auffinden, statt sie nur über die Namenskonvention zu erkennen.
+- Default package: `model` of the publishing domain component. A separate `event` package only once there
+  are many events.
+- Declare the package public for other domain components if needed (Spring Modulith `@NamedInterface`).
+- A common marker interface (e.g. `DomainEvent`) makes all events findable by one type search.
 
-## Empfehlung
+## Recommendations
 
-- Versioniert wird **nur** die API-Seite (`PersonV1`/`PersonV2` samt `PersonResourceV2`); das Domain-Modell behält immer `*Entity` und bleibt unversioniert — der Namenskonflikt löst sich, weil die API-Klasse ohnehin anders heißt als `PersonEntity`.
-- Eigene Annotationen (z. B. eine Meta-Annotation, die `@Transactional` + Timing/Metrics bündelt) statt generischer Spring-Annotationen erleichtern spätere Cross-Cutting-Änderungen an einer zentralen Stelle.
-- Functions sollten idealerweise nur eine öffentliche Einstiegsmethode haben (`execute()`/`call()`), private Hilfsmethoden sind erlaubt — das erleichtert Testbarkeit und Wiederverwendung (vgl. Netflix Hystrix Command Pattern).
+- Only the API side is versioned (`PersonV2` + `PersonResourceV2`); the entity stays unversioned.
+- Project meta-annotations (e.g. bundling `@Transactional(readOnly = …)` with timing/metrics) instead of
+  bare Spring annotations make later cross-cutting changes a one-place change.
+- A function ideally has one public entry method (`execute()`), private helpers allowed — easier to test
+  and reuse (cf. command pattern).
