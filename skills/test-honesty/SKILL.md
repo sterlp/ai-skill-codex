@@ -36,11 +36,37 @@ Recurring shapes here (2026-09-03, cycles 2b-1…3b):
   X". A mutation that only flips the filter says nothing about the cropping.
 - **New branch in the production code ⇒ one test per branch** — the plan's test inventory derives
   from the *branching of the NEW code* (null guard, case normalisation, default fallback, suffix
-  match), not only from the doc's BDD bullets. Mutation proof per branch: each mutation (drop the
-  null guard, drop `toLowerCase`, change the charset default, `endsWith` → `equals`) must turn
-  **exactly its own test** red — a branch whose mutation leaves the suite green is unpinned,
-  whatever the doc said. (Origin 2026-10-24, bug-triage T-2 R-WEB-13: 4 of 6 new branches unpinned,
-  all green under mutation; Da-Dok review F1.)
+  match), not only from the doc's BDD bullets. Where a mutation proof is warranted (next point), each
+  mutation (drop the null guard, drop `toLowerCase`, `endsWith` → `equals`) must turn **exactly its
+  own test** red — a branch whose mutation leaves the suite green is unpinned, whatever the doc said.
+  (Origin 2026-10-24, bug-triage T-2 R-WEB-13: 4 of 6 new branches unpinned; Review F1.)
+- **Mutation proof is risk-based, not per branch by default:** demand it where no honest
+  negative/edge test can pin the rule (concurrency, caching, secrets, data loss); elsewhere a red-first
+  test is the cheaper, durable proof. (Six reviews 2026-11 flagged blanket mutation lists as ceremony.)
+- **Red first, per new test:** every new test shows its own red run before the fix — one red test
+  does not vouch for four others. A test that cannot be red first is declared a characterization test.
+  (I1-D 2026-11-13: only 1 of 5 new tests was shown red before the fix.)
+
+## Absence and negative tests need a valid neighbour
+
+- **"X is not shown/not restored/not rendered" is self-green** if the code path never draws anything.
+  Pair every absence assertion with a valid neighbour on the same path that IS drawn (the safe
+  picture next to the unsafe one, the named image before the unnamed one).
+  (Büroklammer review 2026-11-13: `unsafePicturesAreNotRendered`, `anImageNeverBorrowsAnEarlierName`,
+  `compactDoesNotRestoreRemovedPictures` — all green without the feature.)
+- In jsdom assert on the element and its identity (`toBeTruthy()` on `.anticon-down`), never
+  `.not.toBeNull()` (true on `undefined`) or "some `svg`"; scope selectors to the owning widget's
+  DOM, not to `document`. (K5 review 2026-11-13.)
+
+## Transitions, rendezvous and timing
+
+- **Assert the transition, not a snapshot:** state before the trigger, the trigger, the end state —
+  a snapshot that is already in the target state proves nothing. Fix the expected value BEFORE the
+  trigger, never derive it from the actual result.
+- **Every future/await is asserted:** read the outcome via `get`/`await` with a short deadline; a
+  missed rendezvous must fail, never time out silently into green. (K1, K2, L1, Büroklammer reviews.)
+- **A test exceeding its 1000 ms budget is split** (e.g. `test.each`), never given a longer timeout;
+  a timeout that cannot fire within the test is no assertion.
 
 ## Surface format changed → pin inventory
 
