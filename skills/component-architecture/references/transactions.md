@@ -1,62 +1,88 @@
-# Transaktionsmanagement
+# Transaction management
 
-Cross-Cutting Concern der **internen Fassade** (`@Service`). Nie am Controller (External Facade), nie im Connector, nur ausnahmsweise am Repository (Bulk-Updates, native Queries).
+A cross-cutting concern of the **internal facade** (`*Service`). Never at the external facade, never in
+the connector, only by exception at the repository (bulk updates, native queries).
 
-## Warum genau dort
+## Why there
 
-Eine Transaktion repräsentiert einen fachlichen Use-Case ("Order aufgeben"), nicht einen einzelnen DB-Call. Die interne Fassade orchestriert mehrere Repositories/Functions einer Komponente — genau dort muss Alles-oder-Nichts gelten.
+A transaction represents a use case ("place order"), not a single DB call. The internal facade
+orchestrates several repositories/functions — that is where all-or-nothing must hold.
 
 ```java
 @Service
-public class OrderBusinessManager {
-    @Transactional
-    public void placeOrder(OrderRequest request) {
+public class OrderService {
+    @Transactional(readOnly = false)
+    public void placeOrder(PlaceOrder command) {
         orderRepository.save(order);
-        inventoryComponent.reduceStock(order);
-        // kein Connector-/externer Call hier drin!
+        reduceStockComponent.execute(order);
+        // no connector call here, unless there is a deliberate rollback reason (see below)
     }
 }
 ```
 
-## Bezug zu ACID
+## Functions join, never open: `Propagation.MANDATORY`
 
-`@Transactional` garantiert die vier ACID-Eigenschaften auf DB-Ebene:
+Functions (`*Component`) annotate `@Transactional(propagation = Propagation.MANDATORY, readOnly = …)`. Called without a
+running transaction they fail with `IllegalTransactionStateException` — this makes a missing boundary
+visible instead of silently running each repository call in its own transaction. Tests of such functions
+need their own transaction (see [testing.md](testing.md)).
 
-| Eigenschaft | Bedeutung | Spring-Mechanismus |
-|---|---|---|
-| Atomicity | Alles-oder-Nichts | Rollback bei Exception am Transaktionsende |
-| Consistency | DB bleibt in gültigem Zustand | Constraints + Rollback-Regeln |
-| Isolation | Sichtbarkeit paralleler Transaktionen | `@Transactional(isolation = ...)` |
-| Durability | Commit ist dauerhaft | vom Datenbanktreiber garantiert |
+## `readOnly` is mandatory
 
-### Isolation Levels (`Isolation` Enum)
+Every `@Transactional` sets `readOnly` explicitly (`true` for reads, `false` for writes) — never rely on
+the default. Reason: the reader sees the intent, and `readOnly = true` lets Hibernate/the JDBC driver skip
+dirty checking and flushes. A project meta-annotation can bundle this (see naming-conventions.md).
 
-| Level | Dirty Read | Non-Repeatable Read | Phantom Read |
-|---|---|---|---|
-| READ_UNCOMMITTED | möglich | möglich | möglich |
-| READ_COMMITTED | verhindert | möglich | möglich |
-| REPEATABLE_READ | verhindert | verhindert | möglich |
-| SERIALIZABLE | verhindert | verhindert | verhindert |
+## Connector calls and transactions
 
-Default: Isolation-Level der Datenbank übernehmen, nur bei konkretem Anomalie-Risiko strenger stellen (Kosten: mehr Locking).
+Default: **no connector call inside a transaction.** Network I/O keeps locks and the connection open, and
+a rollback cannot undo what the external system already did.
 
-## Spring-Boot-Best-Practices
+Allowed only with a **deliberate rollback reason**, written next to the call: e.g. the external system must
+accept the data, otherwise our change must not be committed either. Then:
 
-- **Nur auf öffentlichen Methoden der internen Fassade** annotieren — Proxy-basiertes AOP greift sonst nicht (Self-Invocation-Falle: `this.andereMethode()` innerhalb derselben Klasse umgeht die Transaktion).
-- **`readOnly = true`** für reine Lesezugriffe setzen (Optimierungshinweis für Hibernate/JDBC-Treiber).
-- **Transaktionsgrenzen kurz halten**: keine externen/Connector-Calls, kein Netzwerk-I/O, keine langsamen Berechnungen innerhalb der Transaktion — das hält Locks unnötig lange offen.
-- **Rollback-Regeln explizit setzen**: Standardmäßig lösen nur `RuntimeException`/`Error` ein Rollback aus. Für Checked Exceptions `rollbackFor` angeben.
-- **Exceptions nicht schlucken**: Wer eine Exception innerhalb einer `@Transactional`-Methode fängt und nicht weiterwirft, verhindert das Rollback ungewollt.
-- **Propagation bewusst wählen**: `REQUIRED` (Default, hängt sich an vorhandene Transaktion an) vs. `REQUIRES_NEW` (eigene, unabhängige Transaktion — z. B. für Audit-Logs, die auch bei Rollback des Hauptvorgangs bestehen bleiben sollen).
-- **Microservice-Grenze beachten**: `@Transactional` wirkt nur lokal in einem Service/einer DB. Für fachliche Konsistenz über mehrere Komponenten/Microservices hinweg braucht es Sagas/Kompensation statt einer verteilten Transaktion.
+1. The external call is the **last** step before commit, so a failure rolls back everything.
+2. Set an explicit transaction timeout and an explicit client timeout on the connector.
+3. A caller of a transactional endpoint waits **longer** than that endpoint's transaction timeout (buffer,
+   e.g. +1 s). Otherwise it gives up while the server may still commit, and nobody knows the outcome.
+4. Accept the remaining risk: the external system succeeded, our commit fails → the external side needs an
+   idempotent retry or a compensation.
 
-## Checkliste beim Review
+Everything else: commit first, then call the connector — from an `AFTER_COMMIT` listener, preferably
+`@Async`, so the caller does not wait for the external system (see "Events and transactions").
 
-```
-- [ ] @Transactional sitzt nur an der internen Fassade, nicht am Controller/Connector
-- [ ] Kein externer/Connector-Call innerhalb der Transaktion
-- [ ] readOnly=true bei reinen Lesemethoden
-- [ ] Rollback-Regeln passen zur Fehlerbehandlung (keine verschluckten Exceptions)
-- [ ] Propagation (REQUIRED vs. REQUIRES_NEW) bewusst gewählt
-- [ ] Bei Aufrufen über Komponentengrenzen: keine verteilte Transaktion angenommen
-```
+## Events and transactions
+
+Details and tests: skill `spring-transactional-event-listeners`. The listener is a method of the
+listening domain component's internal facade (`*Service`).
+
+- **DB writes: join the publisher's transaction, `BEFORE_COMMIT`.** One connection, one commit, a failure
+  rolls back everything:
+  ```java
+  @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT, fallbackExecution = true)
+  @Transactional(readOnly = false)   // REQUIRED: joins; opens one only in the fallback case
+  public void onOrderCreated(OrderCreatedEvent event) { ... }
+  ```
+- **No DB write, only after a successful commit** (connector call, mail): `AFTER_COMMIT`, preferably
+  `@Async`. Changes started there are not part of the finished commit.
+- Set `fallbackExecution` explicitly (default `false`): with `false`, an event published **outside** a
+  transaction is silently dropped. Use `true` unless you deliberately want that.
+- **`REQUIRES_NEW` is never your own decision.** It suspends the business transaction, holds a second
+  connection (pool exhaustion under load) and decouples the commit. Use it only if the user has already
+  decided it, or tell the user and get the decision first; the reason goes into a comment at the
+  annotation.
+- **"Must not join" (other module, own lifecycle, independent of the caller's outcome)** → `@Async`
+  (`AFTER_COMMIT` listener or async service call), not `REQUIRES_NEW`: the work runs in its own thread with its
+  own transaction, the caller's connection is not held twice.
+- **What a valid reason looks like** — both must hold, and the user confirms it: (1) the commit must be
+  independent of the caller's outcome, **and** (2) it must run synchronously in the same thread. Example:
+  an audit entry must survive the rollback of the business process and must be written before the
+  process continues. Only (1) → `@Async`. Neither → join.
+
+## Spring pitfalls
+
+- **Self-invocation:** `this.otherMethod()` inside the same class bypasses the proxy and the transaction.
+  Only public methods of the internal facade, called from outside, are transactional.
+- **Swallowed exceptions:** catching an exception inside a `@Transactional` method without rethrowing
+  prevents the rollback. Checked exceptions need `rollbackFor`.
+- `@Transactional` is local to one DB; across modules/services use sagas/compensation.
