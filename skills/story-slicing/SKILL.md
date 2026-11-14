@@ -3,7 +3,7 @@ name: story-slicing
 description: Story slicing when a story is too big for one session — docs-only increment first (full story ❌ + ADRs, code-free), compact the session, each dev slice its own foundation-first plan, dev stops after docs-only and builds only on released slices.
 ---
 
-# Story slicing — split docs from code, then hand over (migrated from AGENTS-PLAN.md, 2026-10-20)
+# Story slicing — split docs from code, then hand over
 
 **Trigger:** eine Story ist zu groß für eine Session (der Code passt nicht).
 
