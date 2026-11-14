@@ -50,7 +50,8 @@ npm install -g @ant-design/cli
 | `antd upgrade` | upgrade the CLI |
 
 Use `antd lint ./factory-ui/src` before declaring antd changes done; use `antd usage` to find
-remaining old-API imports during a migration.
+remaining old-API imports during a migration. CLI missing or not runnable? Verify the API from the
+sources in `node_modules/antd` and report the lint as NOT RUN, naming the command — never as green.
 
 ## Design language
 
@@ -61,7 +62,8 @@ picking colors. It is the single owner of our measures (`factory-ui/src/index.cs
 `docs/chat.md` cite it): link it, never fork a copy.
 Key constraints for this repo: tokens over hard-coded hex (`#FFF`/`#FAFAFA` are forbidden in
 product code), 4px grid only, weights 400/600 only, preset palette reserved for tags/charts,
-one `primary` action per screen, theming via `ConfigProvider` (`theme.token`,
+one `primary` action per independent action context (a panel, dialog or composer with its own
+decision — not per screen), theming via `ConfigProvider` (`theme.token`,
 `theme.algorithm`, `theme.components`), never via ad-hoc CSS that bypasses tokens.
 
 ## Docs for LLM context
