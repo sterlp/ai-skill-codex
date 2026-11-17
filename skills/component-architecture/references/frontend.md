@@ -38,6 +38,8 @@ src/
 - Renders one thing from props; reports user actions via callbacks (`onSave`, `onCancel`, `onDelete`).
 - **No server calls**, neither loading nor saving, preferably no global state — it gets what it shows.
   That makes it reusable and testable without a server.
+- Spinner/skeleton only while `isLoading`; without data after a failed load it shows its frame only —
+  `isLoading || !result` as spinner condition is an endless spinner on error.
 - One per file, same size rules as in the backend.
 - Default suffix `*.component.tsx`; `.widget.tsx` and `.view.tsx` are synonyms — one suffix per project
   (`SKILL.md`, Step 0). Whether a UI component is reusable or page-specific is expressed by its **place**
@@ -49,8 +51,10 @@ A dialog editing the page's data is a UI component: it gets `onSave`/`onCancel`,
 and reloads. The dialog shows the error from the rejected `onSave` promise once, directly below its
 headline, and stays open. An `afterSaved` callback for the reload is a smell — the page already knows.
 
-Only a **self-contained** dialog showing another domain component's data loads and saves on its own (rare).
-It is that domain component's exported UI, reached like any other foreign domain component.
+Only a **self-contained** building block loads and sends on its own: its data is used by none of its host
+pages (a dialog showing another domain component's data, an import widget with its own upload and pick
+list). It reports its errors to the page's error area and is that domain component's exported UI. Name
+each one explicitly (doc + guard allowlist); "rare" is not a criterion.
 
 ## Tabs
 
@@ -82,6 +86,9 @@ domain. Another domain component's hooks, model or non-exported UI components ar
 - Smells of a UI component that loads on its own: the same data requested several times per page load,
   `reloadKey` props to re-trigger a child's request, an error shown inside a section instead of the
   page's error area.
+- Enforce it with an architecture test over `components/`: no load hooks via named, default or namespace
+  import or re-export; type-only imports allowed; allowlist = the named self-contained blocks, each must
+  still be a hit (self-check with example violations).
 
 ## Tests
 
