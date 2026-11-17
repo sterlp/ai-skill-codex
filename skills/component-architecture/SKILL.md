@@ -55,7 +55,7 @@ Every entity belongs to exactly one domain component.
 | Role | Backend default (Spring) | UI default (React) | Owns |
 |---|---|---|---|
 | External facade | `*Resource`, `@RestController` | — (the UI calls it) | external ↔ internal model, versioning, authN, HTTP contract |
-| Internal facade | `*Service`, `@Service` | `<name>.page.tsx` (a route) | workflow and control flow. Backend: transaction, authZ/policies, caching. UI: state, server calls, loading/error, wiring UI components |
+| Internal facade | `*Service`, `@Service` | `<name>.page.tsx` (a route) | workflow and control flow. Backend: transaction, authZ/policies, caching. UI: controller and composer — state, **all** server calls of its UI components (load and save, each source once), loading/error, wiring UI components |
 | Function / UI component | `*Component`, `@Component` | `*.component.tsx` | one step / one thing; parameters or props in, result or callbacks out; isolated testable. A UI component makes **no** server call |
 | Repository | `*Repository` | — | persistence |
 | Connector | `*Connector` | `<name>.hooks.ts` (server calls) | internal → external, mirror image of the external facade |
@@ -189,6 +189,9 @@ Details: [references/testing.md](references/testing.md), UI: [references/fronten
 - More than one Spring test context (different profiles/`@MockitoBean` per class) — a setup bug, not normal.
 - Plug-in does the owner's cross-cutting work (counts, retries) instead of reporting back.
 - `src/shared/` UI component or `*Utils` importing domain types — it belongs to that domain.
+- UI component (section, table, edit dialog) loading or saving the page's data itself — the same data is
+  requested several times, errors land inside sections, reloads need `reloadKey`/`afterSaved` chains, and
+  the component is only testable with a server. The page loads and saves; the UI component gets props.
 - Module split or connector extraction done alone or mixed into a feature — always the user's decision,
   its own iteration.
 
